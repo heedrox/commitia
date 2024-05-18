@@ -1,0 +1,1017 @@
+diff --git a/requests/bird/bird.channels.rest b/requests/bird/bird.channels.rest
+index 705b90056..6ac812ce6 100644
+--- a/requests/bird/bird.channels.rest
++++ b/requests/bird/bird.channels.rest
+@@ -1,4 +1,5 @@
+-GET https://api.bird.com/workspaces/00bd5e37-7a30-47ae-a965-50045e0e0214/channels HTTP/1.1
+-Authorization: AccessKey {{BIRD_API_KEY_LIFULL}}
+-Content-Type: application/json
+ 
++### Request - LIFULLCONNECT
++GET https://api.bird.com/workspaces/{{WORKSPACE_ID}}/channels HTTP/1.1
++Authorization: AccessKey {{BIRD_API_KEY}}
++Content-Type: application/json
+diff --git a/requests/bird/bird.send.template.with.parameters.rest b/requests/bird/bird.send.template.with.parameters.rest
+index a009ec162..9b40a1750 100644
+--- a/requests/bird/bird.send.template.with.parameters.rest
++++ b/requests/bird/bird.send.template.with.parameters.rest
+@@ -1,12 +1,12 @@
+-POST https://api.bird.com/workspaces/00bd5e37-7a30-47ae-a965-50045e0e0214/channels/f2cd56c5-3183-44f9-b16c-cee89d9a106c/messages HTTP/1.1
+-Authorization: AccessKey {{BIRD_API_KEY_LIFULL}}
++POST https://api.bird.com/workspaces/{{WORKSPACE_ID}}/channels/{{TEST_CHANNEL_ID}}/messages HTTP/1.1
++Authorization: AccessKey {{BIRD_API_KEY}}
+ Content-Type: application/json
+ 
+ {
+   "receiver": {
+     "contacts": [
+       {
+-        "identifierValue": "+34634941548"
++        "identifierValue": "+34685897718"
+       }
+     ]
+   },
+diff --git a/requests/bird/bird.webhooks.rest b/requests/bird/bird.webhooks.rest
+new file mode 100644
+index 000000000..ad8e9e21d
+--- /dev/null
++++ b/requests/bird/bird.webhooks.rest
+@@ -0,0 +1,20 @@
++### AVAILABLE WEBHOOKS EVENTS
++GET https://nest.messagebird.com/workspaces/{{WORKSPACE_ID}}/available-webhooks HTTP/1.1
++Authorization: AccessKey {{BIRD_API_KEY}}
++Content-Type: application/json
++
++### SUBSCRIBTIONS LIST OF WEBHOOKS
++GET https://nest.messagebird.com/organizations/{{ORGANIZATION_ID}}/workspaces/{{WORKSPACE_ID}}/webhook-subscriptions HTTP/1.1
++Authorization: AccessKey {{BIRD_API_KEY}}
++Content-Type: application/json
++
++### CREATE A SUBSCRIBTION
++POST https://nest.messagebird.com/organizations/{{ORGANIZATION_ID}}/workspaces/{{WORKSPACE_ID}}/webhook-subscriptions HTTP/1.1
++Authorization: AccessKey {{BIRD_API_KEY}}
++Content-Type: application/json
++
++{
++  "service": "channels",
++  "event": "whatsapp.interaction",
++  "url": "https://chat-tracking.prd.lifullconnect.com/api/certification/bird/event"
++}
+diff --git a/requests/certification/bird.event.rest b/requests/certification/bird.event.rest
+new file mode 100644
+index 000000000..1f4655056
+--- /dev/null
++++ b/requests/certification/bird.event.rest
+@@ -0,0 +1,7 @@
++POST {{BASE_URL}}/api/certification/bird/event HTTP/1.1
++Content-Type: application/json
++
++{
++    "birdId": 1,
++    "eventId": 1
++}
+diff --git a/requests/certification/http-client.env.json b/requests/certification/http-client.env.json
+new file mode 100644
+index 000000000..c5fdaec47
+--- /dev/null
++++ b/requests/certification/http-client.env.json
+@@ -0,0 +1,11 @@
++{
++  "local": {
++    "BASE_URL": "http://localhost:4000"
++  },
++  "dev": {
++    "BASE_URL": "https://chat-tracking.dev.lifullconnect.com"
++  },
++  "prod": {
++    "BASE_URL": "https://chat-tracking.prd.lifullconnect.com"
++  }
++}
+diff --git a/serverless.yml b/serverless.yml
+index 164195801..7ecb72b0d 100644
+--- a/serverless.yml
++++ b/serverless.yml
+@@ -295,6 +295,16 @@ functions:
+             cors: true
+             private: false
+ 
++  certification-bird-event:
++    handler: src/certification/runners/bird-event-runner.runner
++    timeout: 5
++    events:
++      - http:
++          path: api/certification/bird/event
++          method: post
++          cors: true
++          private: false
++
+   certification-synermaxx-viber-event:
+       handler: src/certification/runners/synermaxx-viber-event-runner.runner
+       timeout: 5
+diff --git a/src/certification/handlers/bird-event.js b/src/certification/handlers/bird-event.js
+new file mode 100644
+index 000000000..96913bf57
+--- /dev/null
++++ b/src/certification/handlers/bird-event.js
+@@ -0,0 +1,31 @@
++import { logger as defaultLogger } from '../../logger'
++import { LambdaResponsesWithLogger } from '../../shared/handlers/lambdaResponsesWithLogger'
++
++export const BirdEventRunner = {
++  create: birdEventListener
++}
++
++function birdEventListener (dependencies = {}) {
++  const {
++    logger = defaultLogger
++  } = dependencies
++
++  const lambdaResponse = LambdaResponsesWithLogger.create(logger)
++
++  return async (event) => {
++    const body = JSON.parse(event.body)
++
++    logger.info({
++      code: 'BIRD_EVENT_RECEIVED',
++      payload: body
++    })
++
++    return lambdaResponse.success({
++      httpCode: 204,
++      request: {
++        ...event,
++        body
++      }
++    })
++  }
++}
+diff --git a/src/certification/runners/bird-event-runner.js b/src/certification/runners/bird-event-runner.js
+new file mode 100644
+index 000000000..b20996fd2
+--- /dev/null
++++ b/src/certification/runners/bird-event-runner.js
+@@ -0,0 +1,3 @@
++import { BirdEventRunner } from '../handlers/bird-event'
++
++export const runner = BirdEventRunner.create()
+diff --git a/src/lead-plus/infrastructure/identitySeekerActivityRetriever.js b/src/lead-plus/infrastructure/identitySeekerActivityRetriever.js
+index 091877e6e..b3a64424f 100644
+--- a/src/lead-plus/infrastructure/identitySeekerActivityRetriever.js
++++ b/src/lead-plus/infrastructure/identitySeekerActivityRetriever.js
+@@ -126,7 +126,7 @@ function _create (dependencies = {}) {
+   }
+ 
+   function _locationsSummaryFor ({ enquiries }) {
+-    const locations = enquiries.map(e => locationsTranslator.fromEnquiry(e))
++    const locations = enquiries.map(e => locationsTranslator.fromEnquiry(e)).filter(l => !!l)
+ 
+     return locations.reduce((acc, location) => {
+       const found = acc.find(({ location: locationToFind }) => locationToFind === location)
+diff --git a/src/shared/bird/domain/BirdChannel.js b/src/shared/bird/domain/BirdChannel.js
+new file mode 100644
+index 000000000..f59dad4bd
+--- /dev/null
++++ b/src/shared/bird/domain/BirdChannel.js
+@@ -0,0 +1,25 @@
++export const BirdChannelPlatform = {
++  WhatsApp: 'whatsapp'
++}
++
++export const BirdChannel = {
++  create: _create
++}
++
++function _create ({
++  brand,
++  country,
++  workspace,
++  id,
++  platform
++}) {
++  function workspaceId () {
++    return workspace.id()
++  }
++
++  return {
++    id: () => id,
++    platform: () => platform,
++    workspaceId
++  }
++}
+diff --git a/src/shared/bird/domain/BirdWorkspace.js b/src/shared/bird/domain/BirdWorkspace.js
+new file mode 100644
+index 000000000..90abbb8a3
+--- /dev/null
++++ b/src/shared/bird/domain/BirdWorkspace.js
+@@ -0,0 +1,12 @@
++export const BirdWorkspace = {
++  create: _create,
++  Lifull: () => _create({ id: '00bd5e37-7a30-47ae-a965-50045e0e0214', name: 'LIFULL' }),
++  Resem: () => _create({ id: '834945fc-881b-4055-bf20-ebc824732aeb', name: 'RESEM' })
++}
++
++function _create ({ id, name }) {
++  return {
++    id: () => id,
++    name: () => name
++  }
++}
+diff --git a/src/shared/bird/infrastructure/birdWhatsAppSender.js b/src/shared/bird/infrastructure/birdWhatsAppSender.js
+index 6d4b992ae..ef78317c4 100644
+--- a/src/shared/bird/infrastructure/birdWhatsAppSender.js
++++ b/src/shared/bird/infrastructure/birdWhatsAppSender.js
+@@ -5,6 +5,8 @@ import { BirdTemplateRetriever } from '../../../../test/unit/shared/bird/infrast
+ import { getEnv } from '../../../environment'
+ import { Brand } from '../../domain/Brand'
+ import { logger as defaultLogger } from '../../../logger'
++import { Language } from '../../domain/Language'
++import { BirdChannelRetriever } from '../../../../test/unit/shared/bird/infrastructure/birdChannelRetriever'
+ 
+ export const BirdWhatsAppSender = {
+   create: _create
+@@ -17,13 +19,9 @@ function _create (dependencies = {}) {
+     birdApiKey = getEnv('BIRD_API_KEY'),
+     logger = defaultLogger
+   } = dependencies
++  const birdChannelRetriever = BirdChannelRetriever.create()
+ 
+-  function _getWorkspaceId (brand) {
+-    const workspaceId = brand.isResem() ? '834945fc-881b-4055-bf20-ebc824732aeb' : '00bd5e37-7a30-47ae-a965-50045e0e0214'
+-    return workspaceId
+-  }
+-
+-  async function sendTemplateMessage (conversation) {
++  async function sendTemplateMessage (templateMessage) {
+     const {
+       from: {
+         brandId,
+@@ -33,26 +31,26 @@ function _create (dependencies = {}) {
+       message: {
+         template: templateName,
+         parameters,
+-        language
++        language: languageCode
+       }
+-    } = conversation
++    } = templateMessage
++    const country = Country.create({ countryCode })
++    const brand = Brand.createById(brandId)
++    const language = Language.fromCode(languageCode)
+ 
+     const birdTemplate = await birdTemplateRetriever.byName({
+       name: templateName,
+       language,
+-      country: Country.create({ countryCode })
++      country
+     })
+ 
+     if (!birdTemplate) {
+       throw WHATSAPP_TEMPLATE_NOT_FOUND
+     }
+ 
+-    const brand = Brand.createById(brandId)
+-    const channelId = _getChannel({ brand, country: Country.create({ countryCode }) })
+-    const workspaceId = _getWorkspaceId(brand)
+-
++    const channel = birdChannelRetriever.get({ brand, country })
+     const result = await httpClient.post({
+-      url: `https://api.bird.com/workspaces/${workspaceId}/channels/${channelId}/messages`,
++      url: `https://api.bird.com/workspaces/${channel.workspaceId()}/channels/${channel.id()}/messages`,
+       body: {
+         receiver: {
+           contacts: [
+@@ -88,7 +86,7 @@ function _create (dependencies = {}) {
+     })
+   }
+ 
+-  async function sendTextMessageInConversation (conversation) {
++  async function sendTextMessageInConversation (textMessage) {
+     const {
+       from: {
+         brandId,
+@@ -98,14 +96,14 @@ function _create (dependencies = {}) {
+       message: {
+         text
+       }
+-    } = conversation
++    } = textMessage
+ 
+     const brand = Brand.createById(brandId)
+-    const workspaceId = _getWorkspaceId(brand)
+-    const channelId = _getChannel({ brand, country: Country.create({ countryCode }) })
++    const country = Country.create({ countryCode })
++    const channel = birdChannelRetriever.get({ brand, country })
+ 
+-    await httpClient.post({
+-      url: `https://api.bird.com/workspaces/${workspaceId}/channels/${channelId}/messages`,
++    const result = await httpClient.post({
++      url: `https://api.bird.com/workspaces/${channel.workspaceId()}/channels/${channel.id()}/messages`,
+       body: {
+         receiver: {
+           contacts: [
+@@ -126,67 +124,15 @@ function _create (dependencies = {}) {
+         Authorization: `AccessKey ${birdApiKey}`
+       }
+     })
+-  }
+-
+-  function _getChannel ({ brand, country }) {
+-    if (brand.isResem()) {
+-      if (country.equals(Country.Chile()) ||
+-        country.equals(Country.Ecuador()) ||
+-        country.equals(Country.Argentina()) ||
+-        country.equals(Country.Panama()) ||
+-        country.equals(Country.Mexico())
+-      ) {
+-        return 'icasas-channel-id'
+-      }
+-
+-      if (country.equals(Country.Spain())) {
+-        return 'globaliza-channel-id'
+-      }
+-
+-      if (country.equals(Country.Colombia())) {
+-        return 'puntopropiedad-channel-id'
+-      }
+-
+-      if (country.equals(Country.Peru())) {
+-        return 'laencontré-channel-id'
++    logger.info({
++      code: 'BIRD_WHATSAPP_SENDER_RESULT',
++      payload: {
++        brandId,
++        countryCode,
++        type: 'text',
++        result
+       }
+-    }
+-
+-    if (brand.isMitula()) {
+-      return 'mitula-channel-id'
+-    }
+-
+-    if (brand.isNestoria()) {
+-      return 'nestoria-channel-id'
+-    }
+-
+-    if (brand.isTrovit()) {
+-      return 'trovit-channel-id'
+-    }
+-
+-    if (brand.isNuroa()) {
+-      return 'nuroa-channel-id'
+-    }
+-
+-    if (brand.isLamudi()) {
+-      return 'lamudi-channel-id'
+-    }
+-
+-    if (brand.isHipFlat()) {
+-      return 'hipflat-channel-id'
+-    }
+-
+-    if (brand.isDotProperty()) {
+-      return 'dotproperty-channel-id'
+-    }
+-
+-    if (brand.isThailandProperty()) {
+-      return 'thailandproperty-channel-id'
+-    }
+-
+-    if (brand.isProperati()) {
+-      return 'properati-channel-id'
+-    }
++    })
+   }
+ 
+   return {
+diff --git a/src/shared/domain/Country.js b/src/shared/domain/Country.js
+index b89d5b300..7dcb826bd 100644
+--- a/src/shared/domain/Country.js
++++ b/src/shared/domain/Country.js
+@@ -51,10 +51,15 @@ function _create ({ countryCode }) {
+     name,
+     isoAlpha2Code,
+     equals,
+-    isUnitedArabEmirates: () => code() === 'ae',
+-    isThailand: () => code() === 'th',
+-    isMexico: () => code() === 'mx',
+-    isColombia: () => code() === 'co',
+-    isChile: () => code() === 'cl'
++    isUnitedArabEmirates: () => equals(Country.UnitedArabEmirates()),
++    isThailand: () => equals(Country.Thailand()),
++    isMexico: () => equals(Country.Mexico()),
++    isColombia: () => equals(Country.Colombia()),
++    isChile: () => equals(Country.Chile()),
++    isPanama: () => equals(Country.Panama()),
++    isEcuador: () => equals(Country.Ecuador()),
++    isArgentina: () => equals(Country.Argentina()),
++    isPeru: () => equals(Country.Peru()),
++    isSpain: () => equals(Country.Spain())
+   }
+ }
+diff --git a/src/shared/domain/Locale.js b/src/shared/domain/Locale.js
+index 33e54302a..93eeb27a5 100644
+--- a/src/shared/domain/Locale.js
++++ b/src/shared/domain/Locale.js
+@@ -19,10 +19,17 @@ function _create ({ country, language }) {
+     return language.isSpanish()
+   }
+ 
++  function asString () {
++    const countryCode = country ? `_${country.isoAlpha2Code()}` : ''
++
++    return `${language.code()}${countryCode}`
++  }
++
+   return {
+     isEnglishLanguage,
+     isThaiLanguage,
+     isSpanishLanguage,
++    asString,
+     country: () => country,
+     language: () => language
+   }
+diff --git a/test/unit/lead-plus/insfrastructure/identitySeekerActivityRetriever.test.js b/test/unit/lead-plus/insfrastructure/identitySeekerActivityRetriever.test.js
+index 32b74a4c5..58f7693bc 100644
+--- a/test/unit/lead-plus/insfrastructure/identitySeekerActivityRetriever.test.js
++++ b/test/unit/lead-plus/insfrastructure/identitySeekerActivityRetriever.test.js
+@@ -151,7 +151,7 @@ describe('identitySeekerActivityRetriever', function () {
+       .withCoordinates({ latitude: 20, longitude: 200 })
+       .withoutStratum()
+       .build()
+-    const enquiredListing4 = anEnquiredListing()
++    const enquiredListingWithoutGeos = anEnquiredListing()
+       .withId('listing-id-4')
+       .withPropertyType('another-property-type')
+       .withRentPrice({ amount: 600, currency: 'currency-3' })
+@@ -163,7 +163,7 @@ describe('identitySeekerActivityRetriever', function () {
+       .withoutFloorArea()
+       .withoutPlotArea()
+       .withoutStratum()
+-      .withGeoLevel({ level: 'administrative_area_level_3', name: 'Madrid' })
++      .withoutGeoLevel()
+       .withoutCoordinates()
+       .build()
+     const excludedListing1 = anEnquiredListing()
+@@ -199,7 +199,7 @@ describe('identitySeekerActivityRetriever', function () {
+     const enquiry4Builder = anEnquiry()
+       .withId('enquiry-id-4')
+       .withCountry(A_COUNTRY)
+-      .withEnquiredListing(enquiredListing4)
++      .withEnquiredListing(enquiredListingWithoutGeos)
+       .withEnquiryType('an-enquiry-type')
+       .withTimestampFromDate(A_MOMENT_DAY_ENQUIRIES)
+     const excludedEnquiryByCountryBuilder = anEnquiry()
+@@ -258,8 +258,7 @@ describe('identitySeekerActivityRetriever', function () {
+       .build()
+     const expectedLocationsSummary = [
+       { location: 'Badalona (Barcelona)', enquiriesCount: 2 },
+-      { location: 'Barcelona', enquiriesCount: 1 },
+-      { location: 'Madrid', enquiriesCount: 1 }
++      { location: 'Barcelona', enquiriesCount: 1 }
+     ]
+     const expectedActivityBuilder = anOperationTypeActivity()
+       .withEnquiriesCount(4)
+diff --git a/test/unit/shared/bird/infrastructure/birdChannelRetriever.js b/test/unit/shared/bird/infrastructure/birdChannelRetriever.js
+new file mode 100644
+index 000000000..d6c074f3a
+--- /dev/null
++++ b/test/unit/shared/bird/infrastructure/birdChannelRetriever.js
+@@ -0,0 +1,111 @@
++import { BirdChannel, BirdChannelPlatform } from '../../../../../src/shared/bird/domain/BirdChannel'
++import { BirdWorkspace } from '../../../../../src/shared/bird/domain/BirdWorkspace'
++import { WHATSAPP_TENANT_NOT_CONFIGURED } from '../../../../../src/errors'
++
++export const BirdChannelRetriever = {
++  create: _create
++}
++
++function _create () {
++  function get ({ brand, country }) {
++    return _retrieveBirdChannel({ brand, country })
++  }
++
++  function _getWorkspace ({ brand }) {
++    if (brand.isResem()) {
++      return BirdWorkspace.Resem()
++    }
++
++    return BirdWorkspace.Lifull()
++  }
++
++  function _retrieveBirdChannel ({ brand, country }) {
++    const workspace = _getWorkspace({ brand })
++    if (brand.isResem()) {
++      let channelId
++      if (country.isChile() ||
++        country.isEcuador() ||
++        country.isArgentina() ||
++        country.isPanama() ||
++        country.isMexico()
++      ) {
++        channelId = 'icasas-channel-id'
++      }
++
++      if (country.isSpain()) {
++        channelId = 'globaliza-channel-id'
++      }
++
++      if (country.isColombia()) {
++        channelId = 'puntopropiedad-channel-id'
++      }
++
++      if (country.isPeru()) {
++        channelId = 'laencontré-channel-id'
++      }
++
++      if (channelId) {
++        return BirdChannel.create({
++          brand,
++          country,
++          workspace,
++          id: channelId,
++          platform: BirdChannelPlatform.WhatsApp
++        })
++      }
++    }
++
++    let channelId
++    if (brand.isMitula()) {
++      channelId = 'mitula-channel-id'
++    }
++
++    if (brand.isNestoria()) {
++      channelId = 'nestoria-channel-id'
++    }
++
++    if (brand.isTrovit() && country.isColombia()) {
++      channelId = 'trovit-channel-id'
++    }
++
++    if (brand.isNuroa()) {
++      channelId = 'nuroa-channel-id'
++    }
++
++    if (brand.isLamudi()) {
++      channelId = 'lamudi-channel-id'
++    }
++
++    if (brand.isHipFlat()) {
++      channelId = 'hipflat-channel-id'
++    }
++
++    if (brand.isDotProperty()) {
++      channelId = 'dotproperty-channel-id'
++    }
++
++    if (brand.isThailandProperty()) {
++      channelId = 'thailandproperty-channel-id'
++    }
++
++    if (brand.isProperati()) {
++      channelId = 'properati-channel-id'
++    }
++
++    if (!channelId) {
++      throw WHATSAPP_TENANT_NOT_CONFIGURED
++    }
++
++    return BirdChannel.create({
++      brand,
++      country,
++      workspace,
++      id: channelId,
++      platform: BirdChannelPlatform.WhatsApp
++    })
++  }
++
++  return {
++    get
++  }
++}
+diff --git a/test/unit/shared/bird/infrastructure/birdTemplateRetriever.js b/test/unit/shared/bird/infrastructure/birdTemplateRetriever.js
+index 8ecb0be45..036532501 100644
+--- a/test/unit/shared/bird/infrastructure/birdTemplateRetriever.js
++++ b/test/unit/shared/bird/infrastructure/birdTemplateRetriever.js
+@@ -1,35 +1,46 @@
+ import { BirdTemplate } from '../../../../../src/shared/bird/domain/birdTemplate'
++import { BirdWorkspace } from '../../../../../src/shared/bird/domain/BirdWorkspace'
++import { Locale } from '../../../../../src/shared/domain/Locale'
+ 
+ export const BirdTemplateRetriever = {
+   create: _create
+ }
+ 
+-function _create () {
+-  async function byName ({ name, language, country }) {
+-    if (name === 'a-template-name' && language === 'es' && country.isColombia()) {
+-      return BirdTemplate.create({
+-        name: 'a-template-name',
+-        projectId: 'project-id',
+-        versionId: 'version-id',
+-        locale: 'es_CO'
+-      })
+-    }
++const inMemoryTemplatesStore = {
++  'a-template-name': {
++    name: 'a-template-name',
++    projectId: 'project-id',
++    versionId: 'version-id',
++    availableLocales: ['es', 'es_CO'],
++    availableWorkspaces: [BirdWorkspace.Lifull()]
++  },
++  'another-template-name': {
++    name: 'another-template-name',
++    projectId: 'another-project-id',
++    versionId: 'version-id',
++    availableLocales: ['es_CO'],
++    availableWorkspaces: [BirdWorkspace.Lifull(), BirdWorkspace.Resem()]
++  }
++}
+ 
+-    if (name === 'another-template-name' && language === 'es' && country.isColombia()) {
+-      return BirdTemplate.create({
+-        name: 'another-template-name',
+-        projectId: 'another-project-id',
+-        versionId: 'version-id',
+-        locale: 'es_CO'
+-      })
+-    }
++function _create (dependencies = {}) {
++  const {
++    templatesStore = inMemoryTemplatesStore
++  } = dependencies
++
++  async function byName ({ name, language, country }) {
++    const template = templatesStore[name]
++    if (template) {
++      const languageLocales = template.availableLocales.filter(l => l.startsWith(language.code()))
++      const locale = languageLocales.filter(l => l.endsWith(country.isoAlpha2Code())).length === 1
++        ? Locale.create({ country, language })
++        : Locale.create({ language })
+ 
+-    if (name === 'a-template-name' && language === 'es') {
+       return BirdTemplate.create({
+-        name: 'a-template-name',
+-        projectId: 'project-id',
+-        versionId: 'version-id',
+-        locale: 'es'
++        name: template.name,
++        projectId: template.projectId,
++        versionId: template.versionId,
++        locale: locale.asString()
+       })
+     }
+   }
+diff --git a/test/unit/shared/bird/infrastructure/birdWhatsAppSender.test.js b/test/unit/shared/bird/infrastructure/birdWhatsAppSender.test.js
+index 30f0c14b9..2161250e5 100644
+--- a/test/unit/shared/bird/infrastructure/birdWhatsAppSender.test.js
++++ b/test/unit/shared/bird/infrastructure/birdWhatsAppSender.test.js
+@@ -1,5 +1,5 @@
+ import { BirdWhatsAppSender } from '../../../../../src/shared/bird/infrastructure/birdWhatsAppSender'
+-import { WHATSAPP_TEMPLATE_NOT_FOUND } from '../../../../../src/errors'
++import { WHATSAPP_TEMPLATE_NOT_FOUND, WHATSAPP_TENANT_NOT_CONFIGURED } from '../../../../../src/errors'
+ import { httpClient, logger } from '../../../../__DOUBLES__'
+ import { Brand } from '../../../../../src/shared/domain/Brand'
+ import { Language } from '../../../../../src/shared/domain/Language'
+@@ -14,6 +14,7 @@ const A_TEMPLATE_WITH_PARAMETERS_NAME = 'another-template-name'
+ const A_PHONE_NUMBER = '34680831909'
+ const API_KEY = 'an-api-key'
+ const RESEM_WORKSPACE_ID = '834945fc-881b-4055-bf20-ebc824732aeb'
++const LIFULL_WORKSPACE_ID = '00bd5e37-7a30-47ae-a965-50045e0e0214'
+ 
+ const whatsappSender = BirdWhatsAppSender.create({
+   httpClient,
+@@ -21,11 +22,10 @@ const whatsappSender = BirdWhatsAppSender.create({
+   logger
+ })
+ 
+-const LIFULL_WORKSPACE_ID = '00bd5e37-7a30-47ae-a965-50045e0e0214'
+ describe('Bird Whatsapp Sender', () => {
+   describe('sending a template whatsapp message', () => {
+     test('without parameters, for locale and country', async () => {
+-      const whatsappSenderConversationPayload = aWhatsAppSenderConversation()
++      const whatsappSenderTemplateMessageDto = aWhatsAppSenderTemplateMessage()
+         .withBrand(A_BRAND)
+         .withCountry(A_COUNTRY)
+         .withDestinationNumber(A_PHONE_NUMBER)
+@@ -34,7 +34,7 @@ describe('Bird Whatsapp Sender', () => {
+         .withTemplateLanguage(A_LANGUAGE)
+         .buildAsMessagebirdJson()
+ 
+-      await whatsappSender.sendTemplateMessage(whatsappSenderConversationPayload)
++      await whatsappSender.sendTemplateMessage(whatsappSenderTemplateMessageDto)
+ 
+       expect(httpClient.post).toHaveBeenCalledWith({
+         url: `https://api.bird.com/workspaces/${LIFULL_WORKSPACE_ID}/channels/trovit-channel-id/messages`,
+@@ -53,12 +53,15 @@ describe('Bird Whatsapp Sender', () => {
+             parameters: []
+           }
+         },
+-        customHeaders: expect.anything()
++        customHeaders: {
++          'Content-Type': 'application/json',
++          Authorization: `AccessKey ${API_KEY}`
++        }
+       })
+     })
+ 
+     test('with parameters', async () => {
+-      const whatsappSenderConversationPayload = aWhatsAppSenderConversation()
++      const whatsappSenderTemplateMessageDto = aWhatsAppSenderTemplateMessage()
+         .withBrand(A_BRAND)
+         .withCountry(A_COUNTRY)
+         .withDestinationNumber(A_PHONE_NUMBER)
+@@ -67,7 +70,7 @@ describe('Bird Whatsapp Sender', () => {
+         .withTemplateLanguage(A_LANGUAGE)
+         .buildAsMessagebirdJson()
+ 
+-      await whatsappSender.sendTemplateMessage(whatsappSenderConversationPayload)
++      await whatsappSender.sendTemplateMessage(whatsappSenderTemplateMessageDto)
+ 
+       expect(httpClient.post).toHaveBeenCalledWith({
+         url: `https://api.bird.com/workspaces/${LIFULL_WORKSPACE_ID}/channels/trovit-channel-id/messages`,
+@@ -104,18 +107,35 @@ describe('Bird Whatsapp Sender', () => {
+       })
+     })
+ 
+-    test('throw exception when bird template is not found', async () => {
+-      const whatsappSenderConversationPayload = aWhatsAppSenderConversation()
++    test('throws exception when bird template is not found by name', async () => {
++      const whatsappSenderTemplateMessageDto = aWhatsAppSenderTemplateMessage()
+         .withCountry(A_COUNTRY)
+         .withTemplateName('another-template')
+         .withTemplateLanguage(A_LANGUAGE)
+         .buildAsMessagebirdJson()
+ 
+       await expect(
+-        async () => await whatsappSender.sendTemplateMessage(whatsappSenderConversationPayload)
++        async () => await whatsappSender.sendTemplateMessage(whatsappSenderTemplateMessageDto)
+       ).rejects.toBe(WHATSAPP_TEMPLATE_NOT_FOUND)
+     })
+ 
++    test.todo('throws exception when bird template is not available on an specific workspace')
++
++    test.each([
++      ['not configured brandId', Brand.createByName('not-configured-brand-name'), Country.Peru()],
++      ['not configured countryCode', Brand.trovit(), Country.create({ countryCode: 'not-configured-country-code' })]
++    ])('throws WHATSAPP_TENANT_NOT_CONFIGURED for %s', async (_, brand, country) => {
++      const whatsappSenderTemplateMessageDto = aWhatsAppSenderTemplateMessage()
++        .withBrand(brand)
++        .withCountry(country)
++        .buildAsMessagebirdJson()
++
++      expect.assertions(1)
++      await expect(
++        async () => await whatsappSender.sendTextMessageInConversation(whatsappSenderTemplateMessageDto)
++      ).rejects.toBe(WHATSAPP_TENANT_NOT_CONFIGURED)
++    })
++
+     test.each([
+       ['mitula', Brand.mitula(), 'mitula-channel-id'],
+       ['nestoria', Brand.nestoria(), 'nestoria-channel-id'],
+@@ -127,14 +147,14 @@ describe('Bird Whatsapp Sender', () => {
+       ['thailandproperty', Brand.thailandProperty(), 'thailandproperty-channel-id'],
+       ['properati', Brand.properati(), 'properati-channel-id']
+     ])('for brand: %s', async (_, brand, channelId) => {
+-      const whatsappSenderConversationPayload = aWhatsAppSenderConversation()
++      const whatsappSenderTemplateMessageDto = aWhatsAppSenderTemplateMessage()
+         .withBrand(brand)
+         .withCountry(A_COUNTRY)
+         .withTemplateName(TEMPLATE_NAME)
+         .withTemplateLanguage(A_LANGUAGE)
+         .buildAsMessagebirdJson()
+ 
+-      await whatsappSender.sendTemplateMessage(whatsappSenderConversationPayload)
++      await whatsappSender.sendTemplateMessage(whatsappSenderTemplateMessageDto)
+ 
+       expect(httpClient.post).toHaveBeenCalledWith({
+         url: `https://api.bird.com/workspaces/${LIFULL_WORKSPACE_ID}/channels/${channelId}/messages`,
+@@ -153,14 +173,14 @@ describe('Bird Whatsapp Sender', () => {
+       ['icasas (Pa)', Country.Panama(), 'icasas-channel-id'],
+       ['icasas (Mx)', Country.Mexico(), 'icasas-channel-id']
+     ])('for RESEM brand %s', async (_, country, channelId) => {
+-      const whatsappSenderConversationPayload = aWhatsAppSenderConversation()
++      const whatsappSenderTemplateMessageDto = aWhatsAppSenderTemplateMessage()
+         .withBrand(Brand.resem())
+         .withCountry(country)
+         .withTemplateName(TEMPLATE_NAME)
+         .withTemplateLanguage(A_LANGUAGE)
+         .buildAsMessagebirdJson()
+ 
+-      await whatsappSender.sendTemplateMessage(whatsappSenderConversationPayload)
++      await whatsappSender.sendTemplateMessage(whatsappSenderTemplateMessageDto)
+ 
+       expect(httpClient.post).toHaveBeenCalledWith({
+         url: `https://api.bird.com/workspaces/${RESEM_WORKSPACE_ID}/channels/${channelId}/messages`,
+@@ -173,14 +193,14 @@ describe('Bird Whatsapp Sender', () => {
+       ['Resem', Brand.resem(), Country.Spain(), 'globaliza-channel-id', RESEM_WORKSPACE_ID],
+       ['Lifull', Brand.mitula(), Country.Colombia(), 'mitula-channel-id', LIFULL_WORKSPACE_ID]
+     ])('by %s workspace', async (_, brand, country, channelId, workspaceId) => {
+-      const whatsappSenderConversationPayload = aWhatsAppSenderConversation()
++      const whatsappSenderTemplateMessageDto = aWhatsAppSenderTemplateMessage()
+         .withBrand(brand)
+         .withCountry(country)
+         .withTemplateName(TEMPLATE_NAME)
+         .withTemplateLanguage(A_LANGUAGE)
+         .buildAsMessagebirdJson()
+ 
+-      await whatsappSender.sendTemplateMessage(whatsappSenderConversationPayload)
++      await whatsappSender.sendTemplateMessage(whatsappSenderTemplateMessageDto)
+ 
+       expect(httpClient.post).toHaveBeenCalledWith({
+         url: `https://api.bird.com/workspaces/${workspaceId}/channels/${channelId}/messages`,
+@@ -193,7 +213,7 @@ describe('Bird Whatsapp Sender', () => {
+       when(httpClient.post).calledWith(expect.anything()).mockResolvedValue({
+         apiResponse: 'a-response'
+       })
+-      const whatsappSenderConversationPayload = aWhatsAppSenderConversation()
++      const whatsappSenderTemplateMessageDto = aWhatsAppSenderTemplateMessage()
+         .withBrand(A_BRAND)
+         .withCountry(A_COUNTRY)
+         .withDestinationNumber(A_PHONE_NUMBER)
+@@ -202,7 +222,7 @@ describe('Bird Whatsapp Sender', () => {
+         .withTemplateLanguage(A_LANGUAGE)
+         .buildAsMessagebirdJson()
+ 
+-      await whatsappSender.sendTemplateMessage(whatsappSenderConversationPayload)
++      await whatsappSender.sendTemplateMessage(whatsappSenderTemplateMessageDto)
+ 
+       expect(logger.info).toHaveBeenCalledWith({
+         code: 'BIRD_WHATSAPP_SENDER_RESULT',
+@@ -219,14 +239,14 @@ describe('Bird Whatsapp Sender', () => {
+ 
+   describe('sending text reply', () => {
+     test('successfully', async () => {
+-      const conversation = aWhatsAppSenderTextConversation()
++      const whatsappSenderTextMessageDto = aWhatsAppSenderTextMessage()
+         .withBrand(A_BRAND)
+         .withCountry(A_COUNTRY)
+         .withDestinationNumber(A_PHONE_NUMBER)
+         .withText('a-text-reply')
+         .buildAsMessagebirdJson()
+ 
+-      await whatsappSender.sendTextMessageInConversation(conversation)
++      await whatsappSender.sendTextMessageInConversation(whatsappSenderTextMessageDto)
+ 
+       expect(httpClient.post).toHaveBeenCalledWith({
+         url: `https://api.bird.com/workspaces/${LIFULL_WORKSPACE_ID}/channels/trovit-channel-id/messages`,
+@@ -245,13 +265,56 @@ describe('Bird Whatsapp Sender', () => {
+             }
+           }
+         },
+-        customHeaders: expect.anything()
++        customHeaders: {
++          'Content-Type': 'application/json',
++          Authorization: `AccessKey ${API_KEY}`
++        }
+       })
+     })
++
++    test('logs result of API response', async () => {
++      when(httpClient.post).calledWith(expect.anything()).mockResolvedValue({
++        apiResponse: 'a-response'
++      })
++      const whatsappSenderTextMessageDto = aWhatsAppSenderTextMessage()
++        .withBrand(A_BRAND)
++        .withCountry(A_COUNTRY)
++        .withDestinationNumber(A_PHONE_NUMBER)
++        .buildAsMessagebirdJson()
++
++      await whatsappSender.sendTextMessageInConversation(whatsappSenderTextMessageDto)
++
++      expect(logger.info).toHaveBeenCalledWith({
++        code: 'BIRD_WHATSAPP_SENDER_RESULT',
++        payload: {
++          brandId: A_BRAND.id(),
++          countryCode: A_COUNTRY.code(),
++          type: 'text',
++          result: {
++            apiResponse: 'a-response'
++          }
++        }
++      })
++    })
++
++    test.each([
++      ['not configured brandId', Brand.createByName('not-configured-brand-name'), Country.Peru()],
++      ['not configured countryCode', Brand.trovit(), Country.create({ countryCode: 'not-configured-country-code' })]
++    ])('throws WHATSAPP_TENANT_NOT_CONFIGURED for %s', async (_, brand, country) => {
++      const whatsappSenderTextMessageDto = aWhatsAppSenderTextMessage()
++        .withBrand(brand)
++        .withCountry(country)
++        .buildAsMessagebirdJson()
++
++      expect.assertions(1)
++      await expect(
++        async () => await whatsappSender.sendTextMessageInConversation(whatsappSenderTextMessageDto)
++      ).rejects.toBe(WHATSAPP_TENANT_NOT_CONFIGURED)
++    })
+   })
+ })
+ 
+-function aWhatsAppSenderConversation (props = {}) {
++function aWhatsAppSenderTemplateMessage (props = {}) {
+   const {
+     brand = Brand.createByName('a-default-brand-name'),
+     country = Country.create({ countryCode: 'a-default-country-code' }),
+@@ -262,49 +325,49 @@ function aWhatsAppSenderConversation (props = {}) {
+   } = props
+ 
+   function withBrand (brand) {
+-    return aWhatsAppSenderConversation({
++    return aWhatsAppSenderTemplateMessage({
+       ...props,
+       brand
+     })
+   }
+ 
+   function withCountry (country) {
+-    return aWhatsAppSenderConversation({
++    return aWhatsAppSenderTemplateMessage({
+       ...props,
+       country
+     })
+   }
+ 
+   function withDestinationNumber (phoneNumber) {
+-    return aWhatsAppSenderConversation({
++    return aWhatsAppSenderTemplateMessage({
+       ...props,
+       phoneNumber
+     })
+   }
+ 
+   function withTemplateName (templateName) {
+-    return aWhatsAppSenderConversation({
++    return aWhatsAppSenderTemplateMessage({
+       ...props,
+       templateName
+     })
+   }
+ 
+   function withTemplateParameters (templateParameters) {
+-    return aWhatsAppSenderConversation({
++    return aWhatsAppSenderTemplateMessage({
+       ...props,
+       templateParameters
+     })
+   }
+ 
+   function withoutTemplateParameters () {
+-    return aWhatsAppSenderConversation({
++    return aWhatsAppSenderTemplateMessage({
+       ...props,
+       templateParameters: []
+     })
+   }
+ 
+   function withTemplateLanguage (templateLanguage) {
+-    return aWhatsAppSenderConversation({
++    return aWhatsAppSenderTemplateMessage({
+       ...props,
+       templateLanguage
+     })
+@@ -337,7 +400,7 @@ function aWhatsAppSenderConversation (props = {}) {
+   }
+ }
+ 
+-function aWhatsAppSenderTextConversation (props = {}) {
++function aWhatsAppSenderTextMessage (props = {}) {
+   const {
+     brand = Brand.createByName('a-default-brand-name'),
+     country = Country.create({ countryCode: 'a-default-country-code' }),
+@@ -346,28 +409,28 @@ function aWhatsAppSenderTextConversation (props = {}) {
+   } = props
+ 
+   function withBrand (brand) {
+-    return aWhatsAppSenderTextConversation({
++    return aWhatsAppSenderTextMessage({
+       ...props,
+       brand
+     })
+   }
+ 
+   function withCountry (country) {
+-    return aWhatsAppSenderTextConversation({
++    return aWhatsAppSenderTextMessage({
+       ...props,
+       country
+     })
+   }
+ 
+   function withDestinationNumber (phoneNumber) {
+-    return aWhatsAppSenderTextConversation({
++    return aWhatsAppSenderTextMessage({
+       ...props,
+       phoneNumber
+     })
+   }
+ 
+   function withText (text) {
+-    return aWhatsAppSenderTextConversation({
++    return aWhatsAppSenderTextMessage({
+       ...props,
+       text
+     })
