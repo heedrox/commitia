@@ -1,7 +1,7 @@
 import dotenv from 'dotenv'
 import fs from 'fs'
 import { queryGpt } from './query-gpt-chat.js';
-import stripAnsi from "strip-ansi";
+import execute from "./exec.js";
 
 dotenv.config()
 const openAiKey = process.env.OPENAI_API_KEY
@@ -32,14 +32,13 @@ const removeFile = (filename) => fs.unlinkSync(filename)
 
 const fromSystem = (content) => ({ role: "system", content })
 const fromUser = (content) => ({ role: "user", content })
-const fromAssistant = (content) => ({ role: "assistant", content })
-const content = openFile(filenameInput)
 const SYSTEM_PROMPT = 'You are an assistant to write the commit message.' +
-    'The user will send you the content of the commit diff, and you will reply with the commit message.' +
-    'Be concise, just write the message, do not give any explanation. '
+    'The user will send you the content of the commit diff, and you will reply with the commit message. ' +
+    'It must be a commit message of one single line. Be concise, just write the message, do not give any explanation. '
 
 ;(async () => {
     try {
+        const content = await execute('git diff --cached')
         const gptRes = await queryGpt([
             fromSystem(SYSTEM_PROMPT),
             fromUser(content)
