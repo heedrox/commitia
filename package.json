@@ -5,11 +5,13 @@
   "main": "index.js",
   "scripts": {
     "main": "node index.js",
+    "pruebaphi": "node query-phi2.js",
     "test": "jest"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@xenova/transformers": "^2.17.1",
     "dotenv": "^16.0.3",
     "node-fetch": "^3.3.1",
     "strip-ansi": "^7.0.1"

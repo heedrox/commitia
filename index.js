@@ -1,34 +1,9 @@
 import dotenv from 'dotenv'
-import fs from 'fs'
 import { queryGpt } from './query-gpt-chat.js';
 import execute from "./exec.js";
 
 dotenv.config()
-const openAiKey = process.env.OPENAI_API_KEY
-
-const filenameInput = `./prueba2.commit`
-
-const openFile = (filename) => {
-    try {
-        return fs.readFileSync(filename, {encoding:'utf8', flag:'r'})
-    } catch (e) {
-        console.error(`Cannot open file: ${filename}`)
-        process.exit(1)
-    }
-}
-
-const writeFile = (filename, content) => {
-    try {
-        fs.writeFileSync(filename, content, {encoding:'utf8'})
-        console.log(`Written ${filename} - ${content.length} bytes`)
-    } catch (e) {
-        console.error(`Cannot write content to file: ${filename}`, e)
-        process.exit(1)
-    }
-}
-
-const readFile = (filename) => fs.readFileSync(filename)
-const removeFile = (filename) => fs.unlinkSync(filename)
+const openAiKey = process.env.COMMITIA_OPENAI_API_KEY
 
 const fromSystem = (content) => ({ role: "system", content })
 const fromUser = (content) => ({ role: "user", content })
@@ -39,11 +14,11 @@ const SYSTEM_PROMPT = 'You are an assistant to write the commit message.' +
 ;(async () => {
     try {
         const content = await execute('git diff --cached')
-        const gptRes = await queryGpt([
+        const res = await queryGpt([
             fromSystem(SYSTEM_PROMPT),
             fromUser(content)
         ], openAiKey);
-        console.log(gptRes);
+        console.log(res);
     } catch (err) {
         let data= ''
         err.body.on('data', chunk => {
